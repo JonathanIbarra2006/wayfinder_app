@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
+import 'registro_screen.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,116 +12,155 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Estos "controladores" son como ganchos que nos permiten extraer el texto que el usuario escribe
-  final TextEditingController _emailController = TextEditingController();
+  // 1. Controladores y llaves del formulario
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _correoController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-
-  // Llamamos a nuestro mensajero
   final AuthService _authService = AuthService();
 
-  // Esta variable nos ayudará a mostrar un circulito de carga mientras el servidor responde
-  bool _isLoading = false;
+  // 2. Estado de la interfaz
+  bool _cargando = false;
+  bool _ocultarPassword = true;
 
+  // 3. Motor de Autenticación
   void _iniciarSesion() async {
-    // 1. Mostramos el estado de carga
-    setState(() {
-      _isLoading = true;
-    });
+    // Valida que los campos no estén vacíos antes de enviar la petición
+    if (_formKey.currentState!.validate()) {
+      setState(() { _cargando = true; });
 
-    // 2. Le decimos al mensajero que intente hacer login
-    bool exito = await _authService.login(
-      _emailController.text.trim(), // .trim() borra espacios vacíos accidentales
-      _passwordController.text,
-    );
-
-    // 3. Ocultamos el estado de carga
-    setState(() {
-      _isLoading = false;
-    });
-
-    // 4. Verificamos la respuesta
-    if (exito) {
-      // Mensaje de éxito
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('¡Bienvenido a WayFinder!'),
-          backgroundColor: Colors.green,
-        ),
+      // Llama a tu backend Spring Boot a través del servicio
+      bool exito = await _authService.login(
+        _correoController.text.trim(),
+        _passwordController.text.trim(),
       );
 
-      // Hacemos el salto a la pantalla principal.
-      // Usamos pushReplacement para que el usuario no pueda presionar el botón "Atrás" y volver al Login
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
-    } else {
-      // ... el resto del código de error se queda igual
-      // Si hubo error, mostramos un mensaje rojo
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error: Credenciales incorrectas o falla del servidor'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() { _cargando = false; });
+
+      if (exito && mounted) {
+        // Si el backend responde con el JWT, destruye el Login y abre el Mapa
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else if (mounted) {
+        // Si hay error (contraseña mal, servidor caído), avisa al usuario
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Credenciales incorrectas o servidor no disponible.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _correoController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      // La "cabeza" de la aplicación
-      appBar: AppBar(
-        title: const Text('WayFinder - Ingreso'),
-        backgroundColor: Colors.blueAccent,
-      ),
-      // El cuerpo principal
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.map_outlined, size: 100, color: Colors.blueAccent),
-            const SizedBox(height: 30),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Logo / Ícono de la app
+                  const Icon(Icons.location_on, size: 100, color: Colors.blueAccent),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'WayFinder',
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
+                  ),
+                  const Text(
+                    'Explora tu ruta con seguridad',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 40),
 
-            // Caja de texto del Correo
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Correo Electrónico',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.email),
+                  // Campo de Correo
+                  TextFormField(
+                    controller: _correoController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: 'Correo electrónico',
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty || !value.contains('@')) {
+                        return 'Por favor ingresa un correo válido';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Campo de Contraseña
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _ocultarPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(_ocultarPassword ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () {
+                          setState(() { _ocultarPassword = !_ocultarPassword; });
+                        },
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'La contraseña es obligatoria';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 30),
+
+                  // Botón de Ingreso
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _cargando ? null : _iniciarSesion,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: _cargando
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Iniciar Sesión', style: TextStyle(fontSize: 18, color: Colors.white)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Botón hacia Registro
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const RegistroScreen()),
+                      );
+                    },
+                    child: const Text('¿No tienes cuenta? Regístrate aquí'),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-
-            // Caja de texto de la Contraseña
-            TextField(
-              controller: _passwordController,
-              obscureText: true, // Esto oculta la contraseña con puntitos
-              decoration: const InputDecoration(
-                labelText: 'Contraseña',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // El Botón de Ingresar
-            SizedBox(
-              width: double.infinity, // Hace que el botón ocupe todo el ancho
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _iniciarSesion, // Si está cargando, bloquea el botón
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white) // Ruedita de carga
-                    : const Text('Ingresar', style: TextStyle(fontSize: 18)),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

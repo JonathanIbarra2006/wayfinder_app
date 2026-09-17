@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart'; // Importamos nuestra pantalla
+import 'screens/login_screen.dart';
+import 'screens/home_screen.dart';
+import 'services/auth_service.dart';
 
 void main() {
   runApp(const WayFinderApp());
@@ -11,12 +13,59 @@ class WayFinderApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, // Quitamos la etiqueta roja de "DEBUG"
       title: 'WayFinder',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
+        useMaterial3: true,
       ),
-      home: const LoginScreen(), // ¡Le decimos que inicie en el Login!
+      // Configuramos las rutas nombradas para facilitar la navegación
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/home': (context) => const HomeScreen(),
+      },
+      home: const PantallaDeArranque(),
+    );
+  }
+}
+
+// Esta pantalla es un "Splash Screen" invisible que toma la decisión de navegación
+class PantallaDeArranque extends StatefulWidget {
+  const PantallaDeArranque({super.key});
+
+  @override
+  State<PantallaDeArranque> createState() => _PantallaDeArranqueState();
+}
+
+class _PantallaDeArranqueState extends State<PantallaDeArranque> {
+  @override
+  void initState() {
+    super.initState();
+    _verificarSesion();
+  }
+
+  void _verificarSesion() async {
+    final token = await AuthService().obtenerToken();
+
+    // Le damos una pequeña pausa visual para que no parpadee bruscamente
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (mounted) {
+      if (token != null) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.blueAccent,
+      body: Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      ),
     );
   }
 }

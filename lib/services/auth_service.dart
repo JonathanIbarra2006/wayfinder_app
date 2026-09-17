@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthService {
-  // Recuerda: 10.0.2.2 es el puente mágico entre el emulador y tu servidor en Spring Boot
+  // Recuerda: 192.168.1.13 es el puente entre el emulador y tu servidor
   final String baseUrl = 'http://192.168.1.13:8080/api/auth';
 
   // La caja fuerte del celular donde guardaremos el Token
@@ -11,7 +11,6 @@ class AuthService {
 
   Future<bool> login(String email, String password) async {
     try {
-      // 1. Armamos la petición (igual que en Postman)
       final response = await http.post(
         Uri.parse('$baseUrl/login'),
         headers: {'Content-Type': 'application/json'},
@@ -21,12 +20,8 @@ class AuthService {
         }),
       );
 
-      // 2. Si el servidor nos responde con un 200 OK
       if (response.statusCode == 200) {
-        // Extraemos el Token gigantesco que nos mandó Spring Boot
         final token = response.body;
-
-        // Lo guardamos en la caja fuerte del celular con el nombre 'jwt_token'
         await storage.write(key: 'jwt_token', value: token);
         print("¡Login exitoso! Token guardado.");
         return true;
@@ -40,8 +35,39 @@ class AuthService {
     }
   }
 
+  // Función para registrar un usuario nuevo
+  Future<bool> registrarUsuario(String nombre, String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/registro'),
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode({
+          'nombreCompleto': nombre,
+          'email': email,
+          'password': password,
+        }),
+      );
+
+      // Spring Boot devuelve 201 (CREATED) si todo sale bien
+      if (response.statusCode == 201) {
+        return true;
+      } else {
+        print("Error del servidor: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Error de conexión al registrar: $e");
+      return false;
+    }
+  }
+
   // Herramienta extra: Para sacar el token de la caja fuerte cuando queramos pedir las rutas
   Future<String?> obtenerToken() async {
     return await storage.read(key: 'jwt_token');
+  }
+  // Función para cerrar sesión destruyendo el token
+  Future<void> logout() async {
+    await storage.delete(key: 'jwt_token');
+    print("Sesión cerrada. Token eliminado.");
   }
 }

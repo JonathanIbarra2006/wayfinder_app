@@ -19,6 +19,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+  // Controlador para la barra de búsqueda
+  final TextEditingController _buscadorController = TextEditingController();
   final AuthService _authService = AuthService();
   final MapService _mapService = MapService(); // NUEVO: Instancia del servicio
 
@@ -46,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _autonomiaMiVehiculo = 0;
 
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
-  final String ipServidor = '192.168.1.13';
+  final String ipServidor = '192.168.1.15';
 
   // 2. EL MENÚ: Descarga las rutas y muestra el panel inferior
   void _mostrarMenuRutas() async {
@@ -144,6 +146,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (e) {
       debugPrint("Error trazando ruta: $e");
       setState(() { _cargando = false; });
+    }
+  }
+  // Función maestra: Busca el lugar, genera la ruta desde tu GPS y arranca el viaje
+  void _buscarYNavegar() async {
+    if (_miUbicacion == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Esperando tu ubicación GPS...', style: TextStyle(color: Colors.white)), backgroundColor: Colors.orange));
+      return;
+    }
+    if (_buscadorController.text.trim().isEmpty) return;
+
+    setState(() { _cargando = true; });
+
+    // 1. Traducimos el texto a coordenadas
+    LatLng? destino = await _mapService.buscarCoordenadasDestino(_buscadorController.text);
+
+    if (destino == null) {
+      setState(() { _cargando = false; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No encontramos ese lugar. Intenta agregar "Cúcuta" o la ciudad al final.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    // 2. Construimos la ruta dinámica: Desde tu punto AZUL hasta el DESTINO
+    String puntosOSRM = '${_miUbicacion!.longitude},${_miUbicacion!.latitude};${destino.longitude},${destino.latitude}';
+    List<dynamic> geometria = await _mapService.obtenerGeometriaOSRM(puntosOSRM);
+
+    if (geometria.isNotEmpty) {
+      List<LatLng> rutaPorCarretera = geometria.map((punto) => LatLng(punto[1], punto[0])).toList();
+
+      setState(() {
+        _puntosDeRuta = rutaPorCarretera;
+        _marcadoresPoi = []; // Limpiamos los pines viejos
+        // Dibujamos un pin rojo en el destino final
+        _marcadores = [
+          Marker(
+            point: destino,
+            width: 40, height: 40,
+            child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+          )
+        ];
+        _cargando = false;
+        _modoNavegacion = true; // Encendemos la telemetría
+      });
+
+      // Animamos la cámara para mostrar toda la ruta
+      final limitesRuta = LatLngBounds.fromPoints(rutaPorCarretera);
+      final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(50.0));
+      final camaraDestino = ajuste.fit(_mapController.camera);
+      _animarCamara(camaraDestino.center, camaraDestino.zoom);
+    } else {
+      setState(() { _cargando = false; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay carreteras para llegar allí.')));
     }
   }
 
@@ -731,7 +784,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ],
           ),
-
+          // 3. NUEVO: BARRA DE BÚSQUEDA FLOTANTE (Se oculta si estamos navegando)
+          if (!_modoNavegacion)
+            Positioned(
+              top: 15, left: 15, right: 15,
+              child: Card(
+                elevation: 5,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search, color: Colors.blueAccent),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _buscadorController,
+                          decoration: const InputDecoration(
+                            // Modificamos el texto para educar al usuario
+                            hintText: 'Ej. Chapinero, Cúcuta (Agrega la ciudad)',
+                            border: InputBorder.none,
+                          ),
+                          onSubmitted: (value) => _buscarYNavegar(),
+                        ),
+                      ),
+                      if (_cargando)
+                        const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           // 2. EL PANEL DE TELEMETRÍA FLOTANTE (Se muestra si _modoNavegacion es true)
           if (_modoNavegacion)
             Positioned(

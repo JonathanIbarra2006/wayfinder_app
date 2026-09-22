@@ -3,8 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthService {
-  // Recuerda: 192.168.1.13 es el puente entre el emulador y tu servidor
-  final String baseUrl = 'http://192.168.1.13:8080/api/auth';
+  // Recuerda: 192.168.1.X es el puente entre el emulador y tu servidor
+  final String baseUrl = 'http://192.168.1.15:8080/api/auth';
 
   // La caja fuerte del celular donde guardaremos el Token
   final storage = const FlutterSecureStorage();

@@ -138,10 +138,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
 
       if (rutaPorCarretera.isNotEmpty) {
-        final limitesRuta = LatLngBounds.fromPoints(rutaPorCarretera);
-        final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(50.0));
-        final camaraDestino = ajuste.fit(_mapController.camera);
-        _animarCamara(camaraDestino.center, camaraDestino.zoom);
+        // En lugar del CameraFit directo, pasamos por el escudo
+        _enfocarRutaSegura(rutaPorCarretera);
       }
     } catch (e) {
       debugPrint("Error trazando ruta: $e");
@@ -190,19 +188,56 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
 
       // Animamos la cámara para mostrar toda la ruta
-      final limitesRuta = LatLngBounds.fromPoints(rutaPorCarretera);
-      final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(50.0));
-      final camaraDestino = ajuste.fit(_mapController.camera);
-      _animarCamara(camaraDestino.center, camaraDestino.zoom);
+      // ESTO SE BORRA:
+      // final limitesRuta = LatLngBounds.fromPoints(rutaPorCarretera);
+      // final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(50.0));
+      // final camaraDestino = ajuste.fit(_mapController.camera);
+      // _animarCamara(camaraDestino.center, camaraDestino.zoom);
+
+      // SE REEMPLAZA POR ESTO:
+      _enfocarRutaSegura(rutaPorCarretera);
     } else {
       setState(() { _cargando = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay carreteras para llegar allí.')));
     }
   }
 
+  // 🛡️ ESCUDO PROTECTOR CONTRA PANTALLAS ROJAS (NaN)
+  void _enfocarRutaSegura(List<LatLng> puntosRuta) {
+    if (puntosRuta.isEmpty) return;
+
+    try {
+      final limitesRuta = LatLngBounds.fromPoints(puntosRuta);
+
+      // Si origen y destino son idénticos (División por cero inminente)
+      if (limitesRuta.southWest == limitesRuta.northEast) {
+        _animarCamara(puntosRuta.first, 16.0); // Zoom manual seguro
+        return;
+      }
+
+      final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(50.0));
+      final camaraDestino = ajuste.fit(_mapController.camera);
+
+      // Blindaje final por si la librería colapsa internamente
+      if (camaraDestino.center.latitude.isNaN || camaraDestino.center.longitude.isNaN) {
+        _animarCamara(puntosRuta.first, 15.0);
+      } else {
+        _animarCamara(camaraDestino.center, camaraDestino.zoom);
+      }
+    } catch (e) {
+      debugPrint("Escudo salvó la app de un crash: $e");
+      _animarCamara(puntosRuta.first, 15.0); // Aterrizaje de emergencia
+    }
+  }
+
   // Función para animar el vuelo de la cámara (Estilo Google Maps)
 // Función para animar el vuelo de la cámara (Estilo Google Maps - Blindada)
   void _animarCamara(LatLng destino, double zoomDestino) {
+    // BLOQUEO ANTIMISILES: Abortamos si nos envían un destino corrupto
+    if (destino.latitude.isNaN || destino.longitude.isNaN) return;
+
+    // 1. ESCUDO MATEMÁTICO...
+    // (Tu código original continúa igual abajo)
     // 1. ESCUDO MATEMÁTICO: Filtramos el zoom antes de iniciar el vuelo
     double zoomSeguro = 15.0; // Valor seguro por defecto por si el cálculo colapsa
 
@@ -409,7 +444,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           colorAlerta = Colors.orange.shade900;
         }
 
-        // ... dentro de tu _cargarReportes()
         return Marker(
           point: LatLng(reporte['latitud'], reporte['longitud']),
           width: 45,
@@ -421,15 +455,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   'Alerta reportada por la comunidad en tiempo real.',
                   iconoAlerta,
                   colorAlerta,
-                  esReporte: true // NUEVO: Activa los botones de votación
+                  esReporte: true,
+                  idReporte: reporte['idReporte']
               );
             },
             child: Container(
-              // ... tu diseño de contenedor ...
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+                boxShadow: [BoxShadow(blurRadius: 4, color: Colors.black26)],
               ),
               child: Icon(iconoAlerta, color: colorAlerta, size: 28),
             ),
@@ -440,6 +474,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _marcadoresComunidad = nuevosMarcadores;
+        });
+      }
+    } else {
+      // NUEVO: Si la lista de datos está vacía (0 alertas),
+      // forzamos al mapa a limpiar todos los pines comunitarios.
+      if (mounted) {
+        setState(() {
+          _marcadoresComunidad = [];
         });
       }
     }
@@ -548,7 +590,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
   // Función universal para mostrar detalles al tocar un pin en el mapa
 // Función universal para mostrar detalles al tocar un pin en el mapa
-  void _mostrarDetallePin(String titulo, String descripcion, IconData icono, Color color, {bool esReporte = false}) {
+// 1. Agregamos el parámetro opcional "idReporte" al final de la firma
+  void _mostrarDetallePin(String titulo, String descripcion, IconData icono, Color color, {bool esReporte = false, int? idReporte}) {
     showModalBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -570,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 const SizedBox(height: 24),
 
                 // NUEVO: Botones de validación comunitaria (Solo aparecen en alertas)
-                if (esReporte) ...[
+                if (esReporte && idReporte != null) ...[
                   const Text('¿Sigue esta alerta en la vía?', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   Row(
@@ -580,26 +623,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         style: OutlinedButton.styleFrom(foregroundColor: Colors.green),
                         icon: const Icon(Icons.thumb_up),
                         label: const Text('Sigue ahí'),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gracias por confirmar.'), backgroundColor: Colors.green));
-                          // TODO: Enviar voto positivo al backend
+                        onPressed: () async {
+                          // Usamos idReporte! en lugar de alerta.idReporte
+                          bool exito = await _mapService.votarAlerta(idReporte, 'confirmar');
+                          if (exito) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('¡Gracias por confirmar!')));
+                            Navigator.pop(context);
+                          }
                         },
                       ),
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                         icon: const Icon(Icons.thumb_down),
                         label: const Text('Ya no está'),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gracias, ayudaste a limpiar el mapa.'), backgroundColor: Colors.blueAccent));
-                          // TODO: Enviar voto negativo al backend
+                        onPressed: () async {
+                          // Usamos idReporte! en lugar de alerta.idReporte
+                          bool exito = await _mapService.votarAlerta(idReporte, 'descartar');
+                          if (exito) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voto registrado. Ayudaste a limpiar el mapa.')));
+                            Navigator.pop(context);
+                            _cargarReportes(); // Refrescamos el mapa para ver si desapareció
+                          }
                         },
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
+                // ... (el botón de cerrar sigue igual)
 
                 SizedBox(
                   width: double.infinity,
@@ -733,12 +784,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: Stack(
         children: [
           // 1. EL MAPA COMPLETO Y RESTAURADO
+          // 1. EL MAPA COMPLETO Y RESTAURADO
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _miUbicacion ?? const LatLng(7.9333, -72.6),
               initialZoom: 15.0,
-              minZoom: 2.0,
+
+              // 🛡️ SOLUCIÓN: Cambiamos 2.0 por 5.0 para evitar el colapso de los polos
+              // Un zoom de 5.0 permite ver todo el país (Colombia), pero no el planeta entero.
+              minZoom: 5.0,
               maxZoom: 18.49,
             ),
             children: [

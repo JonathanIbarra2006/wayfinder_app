@@ -151,4 +151,34 @@ class MapService {
     }
     return [];
   }
+  // 7. Enviar el voto de la comunidad a Spring Boot
+  Future<bool> votarAlerta(int idReporte, String accion) async {
+    // 1. Obtenemos el token de seguridad
+    String? token = await _authService.obtenerToken();
+    if (token == null) return false;
+
+    try {
+      // 2. Usamos tu variable ipServidor dinámica
+      final url = Uri.parse('http://$ipServidor:8080/api/reportes/$idReporte/votar?accion=$accion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // Descomentado y activado
+        },
+      );
+
+      if (response.statusCode == 200) {
+        print("Voto registrado: ${response.body}");
+        return true;
+      } else {
+        print("Error al votar. Código: ${response.statusCode}");
+        return false;
+      }
+    } catch (e) {
+      print("Error de conexión al votar: $e");
+      return false;
+    }
+  }
 }

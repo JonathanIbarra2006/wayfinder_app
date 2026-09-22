@@ -26,9 +26,14 @@ class VehiculoService {
           'autonomiaKm': autonomia,
         }),
       );
-      return response.statusCode == 201; // Retorna true si se guardó con éxito
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return true;
+      } else {
+        print("Rechazo del backend: Código ${response.statusCode} - ${response.body}");
+        return false;
+      }
     } catch (e) {
-      print("Error al guardar vehículo: $e");
+      print("Error de red al guardar vehículo: $e");
       return false;
     }
   }

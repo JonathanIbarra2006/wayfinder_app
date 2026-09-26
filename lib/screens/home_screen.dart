@@ -817,6 +817,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                 ],
               ),
+
+              // 🛡️ NUEVA CAPA: Radar de Autonomía del Vehículo
+              if (_miUbicacion != null && _autonomiaMiVehiculo > 0 && !_modoNavegacion)
+                CircleLayer(
+                  circles: [
+                    CircleMarker(
+                      point: _miUbicacion!,
+                      color: Colors.tealAccent.withOpacity(0.15), // Relleno verde tecnológico
+                      borderColor: Colors.teal, // Borde sólido
+                      borderStrokeWidth: 2.0,
+                      useRadiusInMeter: true, // ¡Clave! El radio será físico, no en píxeles
+                      radius: _autonomiaMiVehiculo * 1000.0, // Convertimos kilómetros a metros
+                    ),
+                  ],
+                ),
+
               // Capa de pines: Tú, reportes, gasolineras, etc.
               MarkerLayer(
                 markers: [

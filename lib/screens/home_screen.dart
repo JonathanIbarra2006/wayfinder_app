@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<Marker> _marcadoresComunidad = []; // Reportes en tiempo real
   List<Marker> _marcadoresPoi = []; // NUEVO: Puntos de Interés (Gasolineras, etc.)
   LatLng? _miUbicacion; // Inicia vacía hasta que el GPS responda
+
   // Gestión del GPS en tiempo real
   StreamSubscription<Position>? _rastreadorGps;
   // NUEVO: Telemetría de navegación
@@ -43,9 +44,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _cargando = false;
   // NUEVO: Autonomía del vehículo principal del usuario
 // Gestión del vehículo seleccionado
+// Gestión del vehículo seleccionado
   List<dynamic> _listaVehiculos = [];
   Map<String, dynamic>? _vehiculoActivo;
   int _autonomiaMiVehiculo = 0;
+
+  // 🧠 NUEVAS VARIABLES: Memoria del recálculo dinámico
+  LatLng? _destinoActual;
+  bool _recalculando = false;
 
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
   final String ipServidor = '192.168.1.15';
@@ -135,6 +141,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _marcadores = [];
         _cargando = false;
         _modoNavegacion = true; // NUEVO: Encendemos el tablero
+        _destinoActual = rutaPorCarretera.last;
       });
 
       if (rutaPorCarretera.isNotEmpty) {
@@ -174,17 +181,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       setState(() {
         _puntosDeRuta = rutaPorCarretera;
-        _marcadoresPoi = []; // Limpiamos los pines viejos
-        // Dibujamos un pin rojo en el destino final
+        _marcadoresPoi = [];
         _marcadores = [
-          Marker(
-            point: destino,
-            width: 40, height: 40,
-            child: const Icon(Icons.location_on, color: Colors.red, size: 40),
-          )
+          Marker(point: destino, width: 40, height: 40, child: const Icon(Icons.location_on, color: Colors.red, size: 40))
         ];
         _cargando = false;
-        _modoNavegacion = true; // Encendemos la telemetría
+        _modoNavegacion = true;
+
+        _destinoActual = destino; // NUEVO: Memorizamos a dónde vamos
       });
 
       // Animamos la cámara para mostrar toda la ruta
@@ -551,18 +555,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               // NUEVO: Calculamos los kilómetros faltantes en tiempo real
               // Calculamos los kilómetros faltantes en tiempo real
               if (_modoNavegacion && _puntosDeRuta.isNotEmpty) {
-                final destinoFinal = _puntosDeRuta.last; // El último punto de la línea roja
+                final destinoFinal = _puntosDeRuta.last;
                 const distanciaMatematica = Distance();
 
-                _distanciaRestanteKm = distanciaMatematica.as(
-                    LengthUnit.Meter,
-                    _miUbicacion!,
-                    destinoFinal
-                ) / 1000.0;
+                _distanciaRestanteKm = distanciaMatematica.as(LengthUnit.Meter, _miUbicacion!, destinoFinal) / 1000.0;
 
-                // NUEVO: Si estamos a menos de 50 metros (0.05 km), disparamos la llegada
                 if (_distanciaRestanteKm < 0.05) {
                   _finalizarViajeConExito();
+                } else {
+                  // NUEVO: Comprobamos en cada paso si nos salimos de la ruta
+                  _verificarDesvio();
                 }
               }
             });
@@ -961,6 +963,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+  // 🧠 ALGORITMO DE CONSCIENCIA ESPACIAL (Recálculo dinámico)
+  Future<void> _verificarDesvio() async {
+    // Escudos: Si no estamos navegando, o ya está recalculando, o no hay destino, no hace nada
+    if (!_modoNavegacion || _puntosDeRuta.isEmpty || _recalculando || _destinoActual == null || _miUbicacion == null) return;
+
+    const distanciaMatematica = Distance();
+    double distanciaMinima = double.infinity;
+
+    // Escanea todos los nodos de la línea roja para encontrar qué tan lejos estamos de la ruta
+    for (var punto in _puntosDeRuta) {
+      double distanciaAlPunto = distanciaMatematica.as(LengthUnit.Meter, _miUbicacion!, punto);
+      if (distanciaAlPunto < distanciaMinima) {
+        distanciaMinima = distanciaAlPunto;
+      }
+    }
+
+    // LÍMITE DE TOLERANCIA: 50 metros. Si estamos más lejos, activamos el recálculo
+    if (distanciaMinima > 50.0) {
+      setState(() => _recalculando = true);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Desvío detectado. Recalculando ruta...'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Pedimos al servidor OSRM una nueva ruta desde DONDE ESTAMOS AHORA hasta la META original
+      String puntosOSRM = '${_miUbicacion!.longitude},${_miUbicacion!.latitude};${_destinoActual!.longitude},${_destinoActual!.latitude}';
+      List<dynamic> geometria = await _mapService.obtenerGeometriaOSRM(puntosOSRM);
+
+      if (geometria.isNotEmpty && mounted) {
+        List<LatLng> nuevaRuta = geometria.map((punto) => LatLng(punto[1], punto[0])).toList();
+
+        setState(() {
+          _puntosDeRuta = nuevaRuta; // Actualizamos la línea roja en el mapa
+          _recalculando = false;
+        });
+      } else {
+        setState(() => _recalculando = false);
+      }
+    }
   }
   // Función para cerrar la ruta automáticamente al llegar al destino
   void _finalizarViajeConExito() {

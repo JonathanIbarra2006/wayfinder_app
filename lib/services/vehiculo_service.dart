@@ -4,7 +4,7 @@ import 'auth_service.dart';
 
 class VehiculoService {
   // Misma IP que utilizas para auth y reportes
-  final String baseUrl = 'http://192.168.1.15:8080/api/vehiculos';
+  final String baseUrl = 'http://192.168.1.13:8080/api/vehiculos';
   final AuthService _authService = AuthService();
 
   // POST: Enviar un nuevo vehículo al servidor

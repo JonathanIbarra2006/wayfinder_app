@@ -49,12 +49,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Map<String, dynamic>? _vehiculoActivo;
   int _autonomiaMiVehiculo = 0;
 
-  // 🧠 NUEVAS VARIABLES: Memoria del recálculo dinámico
+// 🧠 NUEVAS VARIABLES: Memoria del recálculo dinámico
   LatLng? _destinoActual;
   bool _recalculando = false;
 
+  // 🗣️ NUEVO: Memoria del Asistente de Voz / Texto
+  String _instruccionActual = "Sigue la ruta marcada";
+
+
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
-  final String ipServidor = '192.168.1.15';
+  final String ipServidor = '192.168.1.13';
 
   // 2. EL MENÚ: Descarga las rutas y muestra el panel inferior
   void _mostrarMenuRutas() async {
@@ -173,10 +177,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     // 2. Construimos la ruta dinámica: Desde tu punto AZUL hasta el DESTINO
+// 2. Construimos la ruta dinámica: Desde tu punto AZUL hasta el DESTINO
     String puntosOSRM = '${_miUbicacion!.longitude},${_miUbicacion!.latitude};${destino.longitude},${destino.latitude}';
-    List<dynamic> geometria = await _mapService.obtenerGeometriaOSRM(puntosOSRM);
 
-    if (geometria.isNotEmpty) {
+    // NUEVO: Usamos el servicio avanzado
+    var rutaCompleta = await _mapService.obtenerRutaCompletaOSRM(puntosOSRM);
+
+    if (rutaCompleta != null) {
+      List<dynamic> geometria = rutaCompleta['geometry']['coordinates'];
+      List<dynamic> pasos = rutaCompleta['legs'][0]['steps']; // Extraemos las instrucciones
+
       List<LatLng> rutaPorCarretera = geometria.map((punto) => LatLng(punto[1], punto[0])).toList();
 
       setState(() {
@@ -187,18 +197,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ];
         _cargando = false;
         _modoNavegacion = true;
+        _destinoActual = destino;
 
-        _destinoActual = destino; // NUEVO: Memorizamos a dónde vamos
+        // 🗣️ CORRECCIÓN: Usamos nuestro traductor porque OSRM solo manda códigos (turn, left, etc.)
+        if (pasos.length > 1) {
+          _instruccionActual = _traducirManiobra(pasos[1]['maneuver'], pasos[1]['name'] ?? '');
+        } else if (pasos.isNotEmpty) {
+          _instruccionActual = _traducirManiobra(pasos[0]['maneuver'], pasos[0]['name'] ?? '');
+        }
       });
 
-      // Animamos la cámara para mostrar toda la ruta
-      // ESTO SE BORRA:
-      // final limitesRuta = LatLngBounds.fromPoints(rutaPorCarretera);
-      // final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(50.0));
-      // final camaraDestino = ajuste.fit(_mapController.camera);
-      // _animarCamara(camaraDestino.center, camaraDestino.zoom);
-
-      // SE REEMPLAZA POR ESTO:
       _enfocarRutaSegura(rutaPorCarretera);
     } else {
       setState(() { _cargando = false; });
@@ -232,6 +240,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       debugPrint("Escudo salvó la app de un crash: $e");
       _animarCamara(puntosRuta.first, 15.0); // Aterrizaje de emergencia
     }
+  }
+  // 🗣️ TRADUCTOR DE NAVEGACIÓN (De máquina a Español)
+  String _traducirManiobra(Map<String, dynamic> maneuver, String nombreCalle) {
+    String tipo = maneuver['type'] ?? '';
+    String modificador = maneuver['modifier'] ?? '';
+    String accion = "Continúa en la ruta";
+
+    if (tipo == 'depart') accion = "Inicia tu recorrido";
+    else if (tipo == 'arrive') accion = "Llegarás a tu destino";
+    else if (tipo == 'turn') {
+      if (modificador.contains('left')) accion = "Gira a la izquierda";
+      else if (modificador.contains('right')) accion = "Gira a la derecha";
+      else if (modificador == 'uturn') accion = "Da la vuelta en U";
+      else accion = "Gira";
+    } else if (tipo == 'continue') {
+      accion = "Continúa recto";
+    } else if (tipo == 'roundabout') {
+      accion = "En la rotonda, toma la salida";
+    }
+
+    if (nombreCalle.isNotEmpty) {
+      return "$accion por $nombreCalle";
+    }
+    return accion;
   }
 
   // Función para animar el vuelo de la cámara (Estilo Google Maps)
@@ -948,6 +980,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         });
                       },
                     )
+                  ],
+                ),
+              ),
+            ),
+          // 4. NUEVO: PANEL DE ASISTENTE PASO A PASO (Turn-by-Turn)
+          if (_modoNavegacion)
+            Positioned(
+              top: 120, // Lo ubicamos justo debajo de la telemetría negra
+              left: 20, right: 20,
+              child: Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade800, // Verde característico de carretera
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 5)],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.turn_right, color: Colors.white, size: 32),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Text(
+                        _instruccionActual,
+                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ],
                 ),
               ),

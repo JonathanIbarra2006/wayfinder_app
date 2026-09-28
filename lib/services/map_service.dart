@@ -5,7 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 class MapService {
   // Centralizamos la IP aquí. Si cambia, solo la modificas en este archivo.
-  final String ipServidor = '192.168.1.15';
+  final String ipServidor = '192.168.1.13';
   final AuthService _authService = AuthService();
 
   // 1. Descarga la lista de rutas
@@ -150,6 +150,25 @@ class MapService {
       print("Error con servidor OSRM: $e");
     }
     return [];
+  }
+  // 8. Motor OSRM Avanzado (Geometría + Instrucciones paso a paso en Español)
+// 8. Motor OSRM Avanzado (Geometría + Instrucciones paso a paso)
+  Future<Map<String, dynamic>?> obtenerRutaCompletaOSRM(String puntosOSRM) async {
+    try {
+      // ⚠️ CORRECCIÓN: Retiramos '&language=es' porque el servidor público lo bloquea
+      final url = Uri.parse('http://router.project-osrm.org/route/v1/driving/$puntosOSRM?geometries=geojson&steps=true');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        var osrmData = jsonDecode(response.body);
+        return osrmData['routes'][0];
+      } else {
+        print("Error OSRM: ${response.statusCode} - ${response.body}");
+      }
+    } catch (e) {
+      print("Error con servidor OSRM Avanzado: $e");
+    }
+    return null;
   }
   // 7. Enviar el voto de la comunidad a Spring Boot
   Future<bool> votarAlerta(int idReporte, String accion) async {

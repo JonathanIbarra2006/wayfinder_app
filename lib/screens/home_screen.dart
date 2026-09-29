@@ -10,6 +10,7 @@ import '../services/vehiculo_service.dart';
 import '../widgets/menu_drawer.dart';
 import 'dart:async'; // NUEVO: Para manejar el Stream del GPS
 import '../services/map_service.dart'; // NUEVO: Nuestro mensajero de datos
+import 'package:flutter_tts/flutter_tts.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -57,12 +58,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // 🗣️ NUEVO: Memoria del Asistente de Voz / Texto
 // 🗣️ NUEVO: Memoria del Asistente de Voz / Texto
+// 🗣️ NUEVO: Memoria del Asistente de Voz / Texto
   String _instruccionActual = "Sigue la ruta marcada";
+  final FlutterTts _asistenteVoz = FlutterTts(); // NUEVO MOTOR DE VOZ
 
   // 🚦 NUEVAS VARIABLES: Panel de Pre-Visualización
   bool _modoPrevisualizacion = false;
   double _distanciaTotalKm = 0.0;
   int _tiempoEstimadoMin = 0;
+
 
 
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
@@ -219,7 +223,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         } else if (pasos.isNotEmpty) {
           _instruccionActual = _traducirManiobra(pasos[0]['maneuver'], pasos[0]['name'] ?? '');
         }
-      });
+        // Extraemos la instrucción de manejo
+        if (pasos.length > 1) {
+          _instruccionActual = _traducirManiobra(pasos[1]['maneuver'], pasos[1]['name'] ?? '');
+        } else if (pasos.isNotEmpty) {
+          _instruccionActual = _traducirManiobra(pasos[0]['maneuver'], pasos[0]['name'] ?? '');
+        }
+      }); // AQUÍ TERMINA TU setState
+
+      // 🗣️ NUEVO: El celular lee la instrucción en voz alta
+      await _asistenteVoz.setLanguage("es-ES");
+      await _asistenteVoz.setVolume(1.0);
+      await _asistenteVoz.speak(_instruccionActual);
 
       _enfocarRutaSegura(rutaPorCarretera);
     } else {

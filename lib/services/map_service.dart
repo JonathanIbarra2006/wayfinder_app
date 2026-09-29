@@ -140,7 +140,7 @@ class MapService {
   Future<List<dynamic>> obtenerGeometriaOSRM(String puntosOSRM) async {
     try {
       final response = await http.get(
-          Uri.parse('http://router.project-osrm.org/route/v1/driving/$puntosOSRM?geometries=geojson')
+          Uri.parse('http://router.project-osrm.org/route/v1/driving/$puntosOSRM?geometries=geojson&overview=full')
       );
       if (response.statusCode == 200) {
         var osrmData = jsonDecode(response.body);
@@ -156,7 +156,8 @@ class MapService {
   Future<Map<String, dynamic>?> obtenerRutaCompletaOSRM(String puntosOSRM) async {
     try {
       // ⚠️ CORRECCIÓN: Retiramos '&language=es' porque el servidor público lo bloquea
-      final url = Uri.parse('http://router.project-osrm.org/route/v1/driving/$puntosOSRM?geometries=geojson&steps=true');
+      // En tu función obtenerRutaCompletaOSRM:
+      final url = Uri.parse('http://router.project-osrm.org/route/v1/driving/$puntosOSRM?geometries=geojson&steps=true&overview=full');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {

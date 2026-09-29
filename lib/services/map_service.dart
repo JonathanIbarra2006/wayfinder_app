@@ -5,7 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 class MapService {
   // Centralizamos la IP aquí. Si cambia, solo la modificas en este archivo.
-  final String ipServidor = '192.168.1.13';
+  final String ipServidor = '192.168.1.17';
   final AuthService _authService = AuthService();
 
   // 1. Descarga la lista de rutas

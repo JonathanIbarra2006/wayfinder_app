@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ... el resto de tus variables de estado siguen igual
 
   // 1. GESTIÓN DE ESTADO: Aquí guardamos lo que el mapa debe dibujar
+
   List<LatLng> _puntosDeRuta = [];
   List<Marker> _marcadores = []; // Origen y destino de la ruta
   List<Marker> _marcadoresComunidad = []; // Reportes en tiempo real
@@ -54,11 +55,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _recalculando = false;
 
   // 🗣️ NUEVO: Memoria del Asistente de Voz / Texto
+// 🗣️ NUEVO: Memoria del Asistente de Voz / Texto
   String _instruccionActual = "Sigue la ruta marcada";
+
+  // 🚦 NUEVAS VARIABLES: Panel de Pre-Visualización
+  bool _modoPrevisualizacion = false;
+  double _distanciaTotalKm = 0.0;
+  int _tiempoEstimadoMin = 0;
 
 
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
-  final String ipServidor = '192.168.1.13';
+  final String ipServidor = '192.168.1.17';
 
   // 2. EL MENÚ: Descarga las rutas y muestra el panel inferior
   void _mostrarMenuRutas() async {
@@ -196,10 +203,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Marker(point: destino, width: 40, height: 40, child: const Icon(Icons.location_on, color: Colors.red, size: 40))
         ];
         _cargando = false;
-        _modoNavegacion = true;
+
+        // 🚦 CAMBIO CLAVE: Entramos a modo pre-visualización en lugar de navegar directo
+        _modoPrevisualizacion = true;
         _destinoActual = destino;
 
-        // 🗣️ CORRECCIÓN: Usamos nuestro traductor porque OSRM solo manda códigos (turn, left, etc.)
+        // Extraemos la distancia (viene en metros) y el tiempo (viene en segundos)
+        _distanciaTotalKm = (rutaCompleta['distance'] ?? 0.0) / 1000.0;
+        _tiempoEstimadoMin = ((rutaCompleta['duration'] ?? 0) / 60.0).round();
+
+        // Extraemos la instrucción de manejo
         if (pasos.length > 1) {
           _instruccionActual = _traducirManiobra(pasos[1]['maneuver'], pasos[1]['name'] ?? '');
         } else if (pasos.isNotEmpty) {
@@ -1006,6 +1019,102 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+          // 🚦 NUEVO: PANEL INFERIOR DE PRE-VISUALIZACIÓN (Resumen del Viaje)
+          if (_modoPrevisualizacion)
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 15, spreadRadius: 5)],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Resumen del Viaje', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade800)),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Column(
+                          children: [
+                            const Icon(Icons.timer, color: Colors.blueAccent, size: 32),
+                            const SizedBox(height: 5),
+                            Text('$_tiempoEstimadoMin min', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        Container(height: 40, width: 2, color: Colors.grey.shade300), // Divisor
+                        Column(
+                          children: [
+                            const Icon(Icons.route, color: Colors.blueAccent, size: 32),
+                            const SizedBox(height: 5),
+                            Text('${_distanciaTotalKm.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 🛡️ ALERTA INTELIGENTE DE AUTONOMÍA
+                    if (_autonomiaMiVehiculo > 0 && _distanciaTotalKm > _autonomiaMiVehiculo)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 15),
+                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red.shade200)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text('El destino supera la autonomía de tu vehículo (${_autonomiaMiVehiculo}km).', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13))),
+                          ],
+                        ),
+                      ),
+
+                    Row(
+                      children: [
+                        // Botón de Cancelar
+                        OutlinedButton(
+                          onPressed: () {
+                            setState(() {
+                              _modoPrevisualizacion = false;
+                              _puntosDeRuta = [];
+                              _marcadores = [];
+                            });
+                          },
+                          style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                              side: BorderSide(color: Colors.red.shade200, width: 2),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                          ),
+                          child: const Icon(Icons.close, color: Colors.red),
+                        ),
+                        const SizedBox(width: 15),
+                        // Botón de Iniciar
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _modoPrevisualizacion = false;
+                                _modoNavegacion = true; // 🔥 ¡Arranca el viaje y enciende los paneles de navegación!
+                              });
+                            },
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueAccent,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                            ),
+                            icon: const Icon(Icons.navigation, color: Colors.white),
+                            label: const Text('INICIAR VIAJE', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    )
                   ],
                 ),
               ),

@@ -49,7 +49,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<dynamic> _listaVehiculos = [];
   Map<String, dynamic>? _vehiculoActivo;
   int _autonomiaMiVehiculo = 0;
-
+  // 🎥 NUEVA VARIABLE: Control inteligente de la cámara
+  bool _seguirUsuario = true;
 // 🧠 NUEVAS VARIABLES: Memoria del recálculo dinámico
   LatLng? _destinoActual;
   bool _recalculando = false;
@@ -590,6 +591,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
 
     // Abrimos el canal de comunicación con la antena
+// Abrimos el canal de comunicación con la antena
     _rastreadorGps = Geolocator.getPositionStream(locationSettings: opcionesGps).listen(
             (Position posicion) {
           if (mounted) {
@@ -597,7 +599,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _miUbicacion = LatLng(posicion.latitude, posicion.longitude);
               _velocidadActualKmH = (posicion.speed * 3.6).clamp(0.0, 999.0);
 
-              // NUEVO: Calculamos los kilómetros faltantes en tiempo real
               // Calculamos los kilómetros faltantes en tiempo real
               if (_modoNavegacion && _puntosDeRuta.isNotEmpty) {
                 final destinoFinal = _puntosDeRuta.last;
@@ -608,8 +609,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 if (_distanciaRestanteKm < 0.05) {
                   _finalizarViajeConExito();
                 } else {
-                  // NUEVO: Comprobamos en cada paso si nos salimos de la ruta
+                  // Comprobamos en cada paso si nos salimos de la ruta
                   _verificarDesvio();
+                }
+
+                // 🎥 SOLUCIÓN PASO 3: Solo movemos la cámara si NO estamos explorando
+                if (_seguirUsuario) {
+                  _animarCamara(_miUbicacion!, 17.0);
                 }
               }
             });
@@ -837,11 +843,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             options: MapOptions(
               initialCenter: _miUbicacion ?? const LatLng(7.9333, -72.6),
               initialZoom: 15.0,
-
-              // 🛡️ SOLUCIÓN: Cambiamos 2.0 por 5.0 para evitar el colapso de los polos
-              // Un zoom de 5.0 permite ver todo el país (Colombia), pero no el planeta entero.
               minZoom: 5.0,
               maxZoom: 18.49,
+
+              // 🎥 NUEVO: Detectamos si el usuario movió el mapa con el dedo
+              onPositionChanged: (posicion, tieneGesto) {
+                // Si el usuario toca la pantalla durante la navegación, soltamos la cámara
+                if (tieneGesto && _modoNavegacion && _seguirUsuario) {
+                  setState(() => _seguirUsuario = false);
+                }
+              },
             ),
             children: [
               // Capa base: Las calles
@@ -1112,28 +1123,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             icon: const Icon(Icons.navigation, color: Colors.white),
                             label: const Text('INICIAR VIAJE', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                           ),
-                        ),
+                        ) // Fin del ElevatedButton de Iniciar Viaje
                       ],
                     )
                   ],
                 ),
               ),
             ),
-        ],
+
+        ], // <--- ESTE ES EL CORCHETE QUE CIERRA LOS CHILDREN DEL STACK
       ),
-      floatingActionButton: Column(
+// Reemplaza desde "floatingActionButton:" hasta el final del Scaffold por esto:
+      floatingActionButton: _modoNavegacion
+      // 1. MODO CONDUCCIÓN: Solo mostramos el recentrado si el usuario soltó la cámara
+          ? (!_seguirUsuario
+          ? FloatingActionButton(
+        heroTag: 'btn_recentrar',
+        backgroundColor: Colors.white,
+        elevation: 4,
+        onPressed: () {
+          setState(() => _seguirUsuario = true);
+          if (_miUbicacion != null) {
+            _animarCamara(_miUbicacion!, 17.0);
+          }
+        },
+        child: const Icon(Icons.my_location, color: Colors.blueAccent, size: 28),
+      )
+          : null) // Si ya está centrado, no mostramos ningún botón
+      // 2. MODO EXPLORACIÓN: Mostramos tus botones clásicos
+          : Column(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // 1. Nuevo botón del GPS
           FloatingActionButton(
-            heroTag: "btnGPS", // Necesario cuando hay múltiples FABs
+            heroTag: "btnGPS",
             onPressed: _obtenerUbicacionActual,
             backgroundColor: Colors.white,
             child: const Icon(Icons.my_location, color: Colors.blueAccent),
           ),
-          const SizedBox(height: 16), // Espacio entre los botones
-          // 2. Botón de rutas (el que ya tenías)
+          const SizedBox(height: 16),
           FloatingActionButton.extended(
             heroTag: "btnRutas",
             onPressed: _cargando ? null : _mostrarMenuRutas,
@@ -1145,7 +1173,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ],
       ),
-    );
+    ); // <-- Fin del Scaffold
   }
   // 🧠 ALGORITMO DE CONSCIENCIA ESPACIAL (Recálculo dinámico)
   Future<void> _verificarDesvio() async {

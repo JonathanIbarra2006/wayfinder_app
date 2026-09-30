@@ -11,6 +11,7 @@ import '../widgets/menu_drawer.dart';
 import 'dart:async'; // NUEVO: Para manejar el Stream del GPS
 import '../services/map_service.dart'; // NUEVO: Nuestro mensajero de datos
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/foundation.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -66,8 +67,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _modoPrevisualizacion = false;
   double _distanciaTotalKm = 0.0;
   int _tiempoEstimadoMin = 0;
-
-
+  // 🎨 NUEVA VARIABLE: Interruptor de diseño
+  bool _temaOscuro = false;
 
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
   final String ipServidor = '192.168.1.17';
@@ -600,10 +601,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     // Configuramos la sensibilidad del GPS
-    const LocationSettings opcionesGps = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 5, // Se actualiza cada 5 metros recorridos
-    );
+    // BORRA ESTE BLOQUE:
+    // const LocationSettings opcionesGps = LocationSettings(
+    //   accuracy: LocationAccuracy.high,
+    //   distanceFilter: 5,
+    // );
+
+    // Y REEMPLÁZALO POR ESTE NUEVO MOTOR:
+    LocationSettings opcionesGps;
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      opcionesGps = AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+        forceLocationManager: true,
+        // 🛡️ AQUÍ ESTÁ LA MAGIA: El servicio de notificación permanente
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationText: "El asistente de WayFinder está activo",
+          notificationTitle: "Navegación en curso",
+          enableWakeLock: true, // Evita que el procesador se duerma
+        ),
+      );
+    } else {
+      opcionesGps = const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      );
+    }
 
     // Abrimos el canal de comunicación con la antena
 // Abrimos el canal de comunicación con la antena
@@ -825,9 +849,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       appBar: AppBar(
         title: const Text('WayFinder - Explorar'),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.blueAccent, // Opcional: podrías cambiar esto a negro si _temaOscuro es true
         actions: [
-          // NUEVO BOTÓN: Selector de Vehículo Activo
+          // 🎨 NUEVO BOTÓN: Modo Nocturno
+          IconButton(
+            icon: Icon(_temaOscuro ? Icons.light_mode : Icons.dark_mode, color: Colors.white),
+            tooltip: 'Cambiar Tema',
+            onPressed: () {
+              setState(() {
+                _temaOscuro = !_temaOscuro;
+              });
+            },
+          ),
+
+          // Selector de Vehículo Activo (el que ya tienes)
           IconButton(
             icon: const Icon(Icons.swap_calls, color: Colors.white), // Icono de cambio
             tooltip: 'Cambiar Vehículo',
@@ -870,13 +905,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               },
             ),
             children: [
-              // Capa base: Las calles
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.wayfinder.app',
-                maxZoom: 19,
-                maxNativeZoom: 19,
-              ),
+            // Capa base: Las calles (Procesadas matemáticamente para evitar APIs de pago)
+              if (_temaOscuro)
+                ColorFiltered(
+                  colorFilter: const ColorFilter.matrix([
+                    -0.2126, -0.7152, -0.0722, 0, 255, // Invertir y desaturar Rojo
+                    -0.2126, -0.7152, -0.0722, 0, 255, // Invertir y desaturar Verde
+                    -0.2126, -0.7152, -0.0722, 0, 255, // Invertir y desaturar Azul
+                    0,       0,       0,       1, 0,   // Canal Alfa (Transparencia)
+                  ]),
+                  child: TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.wayfinder.app',
+                    maxZoom: 19,
+                    maxNativeZoom: 19,
+                  ),
+                )
+              else
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.wayfinder.app',
+                  maxZoom: 19,
+                  maxNativeZoom: 19,
+                ),
               // Capa de ruta: La línea roja
               PolylineLayer(
                 polylines: [

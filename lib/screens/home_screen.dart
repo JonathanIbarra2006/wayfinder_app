@@ -51,8 +51,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<dynamic> _listaVehiculos = [];
   Map<String, dynamic>? _vehiculoActivo;
   int _autonomiaMiVehiculo = 0;
-  // 🎥 NUEVA VARIABLE: Control inteligente de la cámara
+// 🎥 NUEVA VARIABLE: Control inteligente de la cámara
   bool _seguirUsuario = true;
+
+  // 🛑 NUEVO: Frenos de emergencia para la animación
+  AnimationController? _controladorCamara;
+
 // 🧠 NUEVAS VARIABLES: Memoria del recálculo dinámico
   LatLng? _destinoActual;
   bool _recalculando = false;
@@ -67,8 +71,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _modoPrevisualizacion = false;
   double _distanciaTotalKm = 0.0;
   int _tiempoEstimadoMin = 0;
-  // 🎨 NUEVA VARIABLE: Interruptor de diseño
+// 🎨 NUEVA VARIABLE: Interruptor de diseño
   bool _temaOscuro = false;
+
+  // 🗺️ NUEVO: Llave maestra para gráficos HD
+  final String _mapboxToken = 'TU_TOKEN_AQUI';
 
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
   final String ipServidor = '192.168.1.17';
@@ -298,68 +305,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Función para animar el vuelo de la cámara (Estilo Google Maps)
 // Función para animar el vuelo de la cámara (Estilo Google Maps - Blindada)
+  // Función para animar el vuelo de la cámara (Estilo Google Maps - Blindaje Total)
+// Función para animar el vuelo de la cámara (Blindaje Extremo Anti-Gestos)
+// Función para animar el vuelo de la cámara (Blindaje Anti-Choques de Gestos)
   void _animarCamara(LatLng destino, double zoomDestino) {
-    // BLOQUEO ANTIMISILES: Abortamos si nos envían un destino corrupto
-    if (destino.latitude.isNaN || destino.longitude.isNaN) return;
+    if (!destino.latitude.isFinite || !destino.longitude.isFinite) return;
 
-    // 1. ESCUDO MATEMÁTICO...
-    // (Tu código original continúa igual abajo)
-    // 1. ESCUDO MATEMÁTICO: Filtramos el zoom antes de iniciar el vuelo
-    double zoomSeguro = 15.0; // Valor seguro por defecto por si el cálculo colapsa
+    double zoomSeguro = 15.0;
+    if (zoomDestino.isFinite) zoomSeguro = zoomDestino.clamp(3.0, 18.0);
 
-    // Verificamos que el zoom no sea "NaN" o Infinito
-    if (zoomDestino.isFinite) {
-      zoomSeguro = zoomDestino;
-      // Forzamos la cámara a respetar los límites físicos de tu mapa
-      if (zoomSeguro < 3.0) zoomSeguro = 3.0;   // Evita alejarse al vacío exterior
-      if (zoomSeguro > 18.0) zoomSeguro = 18.0; // Evita acercarse a nivel microscópico
-    }
-
-    // Capturamos dónde está la cámara AHORA mismo
     final latInicio = _mapController.camera.center.latitude;
     final lngInicio = _mapController.camera.center.longitude;
     final zoomInicio = _mapController.camera.zoom;
 
-    // Creamos las matemáticas del trayecto (Tweens) con el ZOOM SEGURO
+    if (!latInicio.isFinite || !lngInicio.isFinite || !zoomInicio.isFinite) {
+      _mapController.move(destino, zoomSeguro);
+      return;
+    }
+
+    // 🛑 DESTRUYE CUALQUIER ANIMACIÓN PREVIA PARA QUE NO PELEEN ENTRE SÍ
+    _controladorCamara?.dispose();
+
+    // CREAMOS EL NUEVO VUELO Y LO GUARDAMOS EN LA VARIABLE GLOBAL
+    _controladorCamara = AnimationController(duration: const Duration(milliseconds: 800), vsync: this);
+    final animation = CurvedAnimation(parent: _controladorCamara!, curve: Curves.easeInOut);
+
     final latTween = Tween<double>(begin: latInicio, end: destino.latitude);
     final lngTween = Tween<double>(begin: lngInicio, end: destino.longitude);
-    final zoomTween = Tween<double>(begin: zoomInicio, end: zoomSeguro); // ¡Usamos la variable blindada!
+    final zoomTween = Tween<double>(begin: zoomInicio, end: zoomSeguro);
 
-    // Configuramos la duración de la animación (1.5 segundos)
-    final controller = AnimationController(
-        duration: const Duration(milliseconds: 1500),
-        vsync: this
-    );
-
-    // Le damos un efecto de aceleración/desaceleración suave (Curva)
-    final Animation<double> animation = CurvedAnimation(
-        parent: controller,
-        curve: Curves.easeInOut
-    );
-
-    // Escuchamos cada cuadro generado para mover el mapa
-    controller.addListener(() {
-      // Envolvemos el movimiento en un try-catch por máxima seguridad
+    _controladorCamara!.addListener(() {
       try {
-        _mapController.move(
-          LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
-          zoomTween.evaluate(animation),
-        );
+        final lat = latTween.evaluate(animation);
+        final lng = lngTween.evaluate(animation);
+        final z = zoomTween.evaluate(animation);
+
+        if (lat.isFinite && lng.isFinite && z.isFinite) {
+          _mapController.move(LatLng(lat, lng), z);
+        }
       } catch (e) {
-        // Si un cuadro falla, silenciamos el error para no romper la pantalla roja
-        debugPrint("Error en frame de animación: $e");
+        debugPrint("Frame ignorado");
       }
     });
 
-    // Limpiamos la memoria cuando el vuelo termine
-    animation.addStatusListener((status) {
-      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
-        controller.dispose();
-      }
-    });
-
-    // ¡Iniciamos el despegue!
-    controller.forward();
+    _controladorCamara!.forward();
   }
 
   // Función para interactuar con el hardware del GPS
@@ -761,8 +750,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
   @override
   void dispose() {
-    // Cerramos la conexión con el GPS cuando la pantalla se destruye
     _rastreadorGps?.cancel();
+    _controladorCamara?.dispose(); // 🛑 NUEVO: Limpiamos la memoria del vuelo
     super.dispose();
   }
   // 5. Hacemos que esto se ejecute automáticamente al abrir esta pantalla
@@ -897,37 +886,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               maxZoom: 18.49,
 
               // 🎥 NUEVO: Detectamos si el usuario movió el mapa con el dedo
+              // 🎥 NUEVO: Detectamos si el usuario movió el mapa con el dedo
               onPositionChanged: (posicion, tieneGesto) {
-                // Si el usuario toca la pantalla durante la navegación, soltamos la cámara
-                if (tieneGesto && _modoNavegacion && _seguirUsuario) {
-                  setState(() => _seguirUsuario = false);
+                if (tieneGesto) {
+                  // 🛑 SI EL USUARIO TOCA EL MAPA, APAGAMOS EL PILOTO AUTOMÁTICO INMEDIATAMENTE
+                  _controladorCamara?.stop();
+
+                  // Si estamos navegando, desactivamos el seguimiento
+                  if (_modoNavegacion && _seguirUsuario) {
+                    setState(() => _seguirUsuario = false);
+                  }
                 }
               },
             ),
             children: [
-            // Capa base: Las calles (Procesadas matemáticamente para evitar APIs de pago)
-              if (_temaOscuro)
-                ColorFiltered(
-                  colorFilter: const ColorFilter.matrix([
-                    -0.2126, -0.7152, -0.0722, 0, 255, // Invertir y desaturar Rojo
-                    -0.2126, -0.7152, -0.0722, 0, 255, // Invertir y desaturar Verde
-                    -0.2126, -0.7152, -0.0722, 0, 255, // Invertir y desaturar Azul
-                    0,       0,       0,       1, 0,   // Canal Alfa (Transparencia)
-                  ]),
-                  child: TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.wayfinder.app',
-                    maxZoom: 19,
-                    maxNativeZoom: 19,
-                  ),
-                )
-              else
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.wayfinder.app',
-                  maxZoom: 19,
-                  maxNativeZoom: 19,
-                ),
+              // Capa base: Gráficos de alta definición estilo Google Maps
+              TileLayer(
+                urlTemplate: _temaOscuro
+                    ? 'https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/tiles/256/{z}/{x}/{y}@2x?access_token=$_mapboxToken'
+                    : 'https://api.mapbox.com/styles/v1/mapbox/navigation-day-v1/tiles/256/{z}/{x}/{y}@2x?access_token=$_mapboxToken',
+                userAgentPackageName: 'com.wayfinder.app',
+                maxZoom: 19,
+                maxNativeZoom: 19,
+              ),
               // Capa de ruta: La línea roja
               PolylineLayer(
                 polylines: [

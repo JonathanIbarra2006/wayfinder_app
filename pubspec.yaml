@@ -40,6 +40,10 @@ dependencies:
   latlong2: ^0.9.1
   geolocator: ^14.0.3
   flutter_tts: ^4.2.5
+  flutter_dotenv: ^6.0.1
+  flutter_map_cache: ^1.5.2
+  dio_cache_interceptor_hive_store: ^4.0.0
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -51,6 +55,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -62,6 +68,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # 🔐 Agrega estas dos líneas cuidando los espacios:
+  assets:
+    - .env
+    - assets/logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -93,3 +104,17 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/logo.png"
+  min_sdk_android: 21
+
+flutter_native_splash:
+  color: "#ffffff"
+  image: "assets/logo.png"
+  android: true
+  ios: true
+  android_12:
+    image: "assets/logo.png"
+    icon_background_color: "#ffffff"

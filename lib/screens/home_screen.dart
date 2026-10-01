@@ -12,6 +12,11 @@ import 'dart:async'; // NUEVO: Para manejar el Stream del GPS
 import '../services/map_service.dart'; // NUEVO: Nuestro mensajero de datos
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:dio_cache_interceptor_hive_store/dio_cache_interceptor_hive_store.dart';
+import 'package:flutter_map_cache/flutter_map_cache.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -74,8 +79,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 // 🎨 NUEVA VARIABLE: Interruptor de diseño
   bool _temaOscuro = false;
 
-  // 🗺️ NUEVO: Llave maestra para gráficos HD
-  final String _mapboxToken = 'TU_TOKEN_AQUI';
+// 🗺️ Llave maestra obtenida desde la bóveda segura (.env)
+  final String _mapboxToken = dotenv.env['MAPBOX_TOKEN'] ?? '';
+  // 💾 NUEVO: Base de datos local para guardar el mapa sin internet
+  HiveCacheStore? _almacenCache;
 
   // ⚠️ CAMBIA ESTO POR LA IP DE TU COMPUTADORA (Ej: '192.168.1.X')
   final String ipServidor = '192.168.1.17';
@@ -758,10 +765,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _obtenerUbicacionActual(); // 1. Centra la cámara la primera vez y pide permisos
-    _iniciarRastreoGps();      // 2. NUEVO: Mantiene el punto actualizándose silenciosamente
+    _prepararMemoriaOffline(); // 💾 NUEVO: Arranca el motor de caché
+    _obtenerUbicacionActual();
+    _iniciarRastreoGps();
     _cargarReportes();
     _cargarVehiculoPrincipal();
+  }
+
+  // 💾 NUEVA FUNCIÓN: Crea una carpeta secreta en el teléfono para guardar el mapa
+  Future<void> _prepararMemoriaOffline() async {
+    final directorio = await getTemporaryDirectory();
+    final rutaCarpeta = Directory('${directorio.path}/mapa_wayfinder_cache');
+
+    if (!await rutaCarpeta.exists()) {
+      await rutaCarpeta.create();
+    }
+
+    if (mounted) {
+      setState(() {
+        _almacenCache = HiveCacheStore(rutaCarpeta.path);
+      });
+    }
   }
   // Función para obtener la autonomía del vehículo registrado
 // 1. Modificamos la carga para guardar toda la lista
@@ -901,6 +925,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             children: [
               // Capa base: Gráficos de alta definición estilo Google Maps
+              // Capa base: Gráficos de alta definición estilo Google Maps
               TileLayer(
                 urlTemplate: _temaOscuro
                     ? 'https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/tiles/256/{z}/{x}/{y}@2x?access_token=$_mapboxToken'
@@ -908,6 +933,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 userAgentPackageName: 'com.wayfinder.app',
                 maxZoom: 19,
                 maxNativeZoom: 19,
+                // 💾 MAGIA OFFLINE: Si la memoria está lista, guarda y lee desde el celular
+                tileProvider: _almacenCache != null
+                    ? CachedTileProvider(store: _almacenCache!)
+                    : null,
               ),
               // Capa de ruta: La línea roja
               PolylineLayer(

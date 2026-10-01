@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 🔐 NUEVA IMPORTACIÓN
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // Asegura que Flutter esté listo
+  await dotenv.load(fileName: ".env");       // 🔐 CARGAMOS LOS SECRETOS AQUÍ
+
+  // CORRECCIÓN: Cambiamos MyApp por WayFinderApp
   runApp(const WayFinderApp());
 }
 

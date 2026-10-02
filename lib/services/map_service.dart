@@ -201,4 +201,28 @@ class MapService {
       return false;
     }
   }
+// NUEVO: Petición al servidor Spring Boot para traer los negocios por categoría
+  Future<List<dynamic>> obtenerPoisPorCategoria(String categoria) async {
+    try {
+      final token = await _authService.obtenerToken();
+      if (token == null) return [];
+
+      // 🛠️ CORRECCIÓN AQUÍ: Usamos tu variable ipServidor armando la URL correctamente
+      final url = Uri.parse('http://$ipServidor:8080/api/pois/categoria/$categoria');
+
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      } else {
+        print("El servidor respondió con error: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Error en API de POIs: $e");
+    }
+    return [];
+  }
 }

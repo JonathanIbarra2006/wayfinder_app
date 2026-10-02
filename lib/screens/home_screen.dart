@@ -50,7 +50,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _distanciaRestanteKm = 0.0; // NUEVO: Kilómetros hasta el destino
   final MapController _mapController = MapController();
   bool _cargando = false;
-  List<dynamic> _listaRutasNube = []; // NUEVO: Rutas reales de Supabase
+  String _filtroActivo = ""; // NUEVO: Guarda el nombre del filtro seleccionado
+  List<dynamic> _listaRutasNube = [];
+  bool _cargandoRutasNube = true; // 👈 NUEVO: Interruptor dedicado
   // NUEVO: Autonomía del vehículo principal del usuario
 // Gestión del vehículo seleccionado
 // Gestión del vehículo seleccionado
@@ -778,6 +780,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (mounted) {
       setState(() {
         _listaRutasNube = rutas;
+        _cargandoRutasNube = false; // 👈 NUEVO: Apagamos el motor de carga
       });
     }
   }
@@ -1276,10 +1279,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         child: Text("Rutas Recomendadas", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       ),
 
-                      // 👇 NUEVO BLOQUE: Dibuja dinámicamente o muestra cargando
-                      if (_listaRutasNube.isEmpty)
-                        const Center(child: CircularProgressIndicator()),
-                      ..._listaRutasNube.map((ruta) => _tarjetaRuta(ruta)),
+                      // 👇 NUEVA LÓGICA: Muestra carga, muestra texto vacío, o dibuja las tarjetas
+                      if (_cargandoRutasNube)
+                        const Center(child: Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: CircularProgressIndicator(),
+                        )),
+                      if (!_cargandoRutasNube && _listaRutasNube.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Text("No hay rutas disponibles por ahora.", style: TextStyle(color: Colors.grey)),
+                        ),
+                      if (!_cargandoRutasNube && _listaRutasNube.isNotEmpty)
+                        ..._listaRutasNube.map((ruta) => _tarjetaRuta(ruta)),
                     ],
                   ),
                 );
@@ -1395,24 +1407,74 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // 🎨 WIDGET: Botón de filtro para Puntos de Interés
+// 🎨 WIDGET: Botón de filtro dinámico
   Widget _crearFiltroPoi(String titulo, IconData icono, Color colorPrimario) {
+    bool seleccionado = _filtroActivo == titulo; // ¿Soy el botón presionado?
+
     return ActionChip(
-      elevation: 2,
+      elevation: seleccionado ? 4 : 2,
       pressElevation: 4,
       shadowColor: Colors.black12,
-      backgroundColor: Colors.white,
+      backgroundColor: seleccionado ? colorPrimario.withOpacity(0.15) : Colors.white,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.grey.shade200)
+          side: BorderSide(
+            color: seleccionado ? colorPrimario : Colors.grey.shade200,
+            width: seleccionado ? 1.5 : 1.0,
+          )
       ),
       avatar: Icon(icono, size: 18, color: colorPrimario),
-      label: Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
-      onPressed: () {
-        print("Filtrando: $titulo");
-      },
+      label: Text(
+          titulo,
+          style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: seleccionado ? colorPrimario : Colors.black87
+          )
+      ),
+      onPressed: () => _aplicarFiltroPoi(titulo),
     );
   }
+  // ⚙️ LÓGICA: Traer POIs del backend y dibujarlos
+  Future<void> _aplicarFiltroPoi(String categoria) async {
+    // Si el usuario vuelve a tocar el mismo botón, lo apagamos y limpiamos el mapa
+    if (_filtroActivo == categoria) {
+      setState(() {
+        _filtroActivo = "";
+        _marcadoresPoi = [];
+      });
+      return;
+    }
 
+    // Si es un botón nuevo, lo encendemos y mostramos estado de carga
+    setState(() {
+      _filtroActivo = categoria;
+      _cargando = true;
+    });
+
+    try {
+      // Pedimos los datos al backend a través de nuestro servicio
+      List<dynamic> puntos = await _mapService.obtenerPoisPorCategoria(categoria);
+
+      // Convertimos los datos JSON en Pines reales para el mapa
+      List<Marker> nuevosPines = puntos.map((poi) {
+        return Marker(
+          point: LatLng(poi['latitud'], poi['longitud']), // Aseguraremos estos nombres con el backend luego
+          width: 40,
+          height: 40,
+          child: Icon(Icons.location_on, color: Colors.redAccent, size: 40),
+        );
+      }).toList();
+
+      setState(() {
+        _marcadoresPoi = nuevosPines;
+        _cargando = false;
+      });
+
+    } catch (e) {
+      debugPrint("Error cargando Filtros: $e");
+      setState(() => _cargando = false);
+    }
+  }
   // 🎨 WIDGET: Tarjeta premium para cada ruta
 // 🎨 WIDGET: Tarjeta premium conectada a la base de datos
   Widget _tarjetaRuta(Map<String, dynamic> ruta) {

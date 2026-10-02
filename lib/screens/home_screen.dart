@@ -1205,12 +1205,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                         const SizedBox(width: 15),
                         // Botón de Iniciar
+                        // Botón de Iniciar
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: () {
                               setState(() {
                                 _modoPrevisualizacion = false;
                                 _modoNavegacion = true; // 🔥 ¡Arranca el viaje y enciende los paneles de navegación!
+
+                                // 🛠️ CORRECCIÓN: Calculamos la distancia inicial matemáticamente antes de arrancar la moto
+                                if (_miUbicacion != null && _destinoActual != null) {
+                                  const distanciaMatematica = Distance();
+                                  _distanciaRestanteKm = distanciaMatematica.as(LengthUnit.Meter, _miUbicacion!, _destinoActual!) / 1000.0;
+                                }
                               });
                             },
                             style: ElevatedButton.styleFrom(
@@ -1221,14 +1228,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             icon: const Icon(Icons.navigation, color: Colors.white),
                             label: const Text('INICIAR VIAJE', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                           ),
-                        ) // Fin del ElevatedButton de Iniciar Viaje
+                        )
                       ],
                     )
                   ],
                 ),
               ),
             ),
-// 📱 PANEL INFERIOR DESLIZANTE (Explorar)
+          // 📱 PANEL INFERIOR DESLIZANTE (Explorar)
           if (!_modoNavegacion && !_modoPrevisualizacion)
             DraggableScrollableSheet(
               initialChildSize: 0.08,

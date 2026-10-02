@@ -724,10 +724,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         icon: const Icon(Icons.thumb_up),
                         label: const Text('Sigue ahí'),
                         onPressed: () async {
-                          // Usamos idReporte! en lugar de alerta.idReporte
-                          bool exito = await _mapService.votarAlerta(idReporte, 'confirmar');
+                          bool exito = await _mapService.votarAlerta(idReporte!, 'confirmar');
                           if (exito) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('¡Gracias por confirmar!')));
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('¡Gracias por confirmar la alerta!')));
                             Navigator.pop(context);
                           }
                         },
@@ -737,12 +736,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         icon: const Icon(Icons.thumb_down),
                         label: const Text('Ya no está'),
                         onPressed: () async {
-                          // Usamos idReporte! en lugar de alerta.idReporte
-                          bool exito = await _mapService.votarAlerta(idReporte, 'descartar');
+                          bool exito = await _mapService.votarAlerta(idReporte!, 'descartar');
                           if (exito) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voto registrado. Ayudaste a limpiar el mapa.')));
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voto registrado. Faltan más votos para borrarla.')));
                             Navigator.pop(context);
-                            _cargarReportes(); // Refrescamos el mapa para ver si desapareció
+                            _cargarReportes();
                           }
                         },
                       ),

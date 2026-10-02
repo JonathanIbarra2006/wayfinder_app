@@ -1456,8 +1456,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
   // ⚙️ LÓGICA: Traer POIs del backend y dibujarlos
+// ⚙️ LÓGICA (FASE 4): Radar Híbrido - Traer POIs de Spring Boot y del Mundo
   Future<void> _aplicarFiltroPoi(String categoria) async {
-    // Si el usuario vuelve a tocar el mismo botón, lo apagamos y limpiamos el mapa
     if (_filtroActivo == categoria) {
       setState(() {
         _filtroActivo = "";
@@ -1466,37 +1466,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
 
-    // Si es un botón nuevo, lo encendemos y mostramos estado de carga
     setState(() {
       _filtroActivo = categoria;
       _cargando = true;
     });
 
     try {
-      // Pedimos los datos al backend a través de nuestro servicio
-      List<dynamic> puntos = await _mapService.obtenerPoisPorCategoria(categoria);
+      // 1. Buscamos tus lugares Premium (Spring Boot -> Supabase)
+      List<dynamic> puntosLocales = await _mapService.obtenerPoisPorCategoria(categoria);
 
-      // Convertimos los datos JSON en Pines reales para el mapa
-      // Convertimos los datos JSON en Pines premium para el mapa
-      List<Marker> nuevosPines = puntos.map((poi) {
-        int tipo = poi['idTipo']; // Leemos qué tipo de negocio es
+      // 2. Encendemos el Radar Global alrededor de tu ubicación (Overpass API)
+      List<dynamic> puntosGlobales = [];
+      if (_miUbicacion != null) {
+        puntosGlobales = await _mapService.obtenerPoisGlobales(
+            categoria,
+            _miUbicacion!.latitude,
+            _miUbicacion!.longitude
+        );
+      }
+
+      // 3. Fusionamos ambas bases de datos
+      List<dynamic> todosLosPuntos = [...puntosLocales, ...puntosGlobales];
+
+      // 4. Dibujamos el mapa diferenciando los tuyos de los genéricos
+      List<Marker> nuevosPines = todosLosPuntos.map((poi) {
+        int tipo = poi['idTipo'];
+        bool esGlobal = poi['esGlobal'] ?? false; // Buscamos la etiqueta secreta
 
         return Marker(
           point: LatLng(poi['latitud'], poi['longitud']),
-          width: 45,
-          height: 45,
+          width: esGlobal ? 35 : 45, // Los tuyos son un poco más grandes
+          height: esGlobal ? 35 : 45,
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
-              boxShadow: [
+              border: Border.all(
+                // Borde grueso a color para los tuyos, borde gris fino para los globales
+                color: esGlobal ? Colors.grey.shade400 : _obtenerColorPoi(tipo),
+                width: esGlobal ? 1.0 : 2.5,
+              ),
+              boxShadow: const [
                 BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))
               ],
             ),
             child: Icon(
               _obtenerIconoPoi(tipo),
-              color: _obtenerColorPoi(tipo),
-              size: 24,
+              // Ícono gris para los genéricos, color corporativo vibrante para los tuyos
+              color: esGlobal ? Colors.grey.shade600 : _obtenerColorPoi(tipo),
+              size: esGlobal ? 18 : 24,
             ),
           ),
         );
@@ -1508,7 +1526,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
 
     } catch (e) {
-      debugPrint("Error cargando Filtros: $e");
+      debugPrint("Error cargando Radares Híbridos: $e");
       setState(() => _cargando = false);
     }
   }

@@ -225,4 +225,71 @@ class MapService {
     }
     return [];
   }
+  // 🌍 NUEVO (FASE 4): Radar Global en Tiempo Real (Overpass API)
+// 🌍 NUEVO (FASE 4): Radar Global en Tiempo Real (Overpass API)
+// 🌍 NUEVO (FASE 4): Radar Global en Tiempo Real (Overpass API)
+  Future<List<dynamic>> obtenerPoisGlobales(String categoria, double lat, double lng) async {
+    String tagOsm = "";
+    switch (categoria) {
+      case "Gasolineras": tagOsm = '"amenity"="fuel"'; break;
+      case "Restaurantes": tagOsm = '"amenity"="restaurant"'; break;
+      case "Miradores": tagOsm = '"tourism"="viewpoint"'; break;
+      case "Talleres": tagOsm = '"shop"="motorcycle_repair"'; break;
+      default: return [];
+    }
+
+    // 1. CORRECCIÓN: Subimos el timeout a 30 segundos para permitir el escaneo de 15km (700 km2)
+    String query = '[out:json][timeout:30];(node[$tagOsm](around:15000,$lat,$lng);way[$tagOsm](around:15000,$lat,$lng);relation[$tagOsm](around:15000,$lat,$lng););out center;';
+    String url = 'https://overpass-api.de/api/interpreter?data=${Uri.encodeComponent(query)}';
+
+    try {
+      final response = await http.get(
+          Uri.parse(url),
+          headers: {'User-Agent': 'WayFinderApp/1.0'}
+      );
+
+      if (response.statusCode == 200) {
+        var data = json.decode(utf8.decode(response.bodyBytes));
+
+        // 2. CORRECCIÓN: Si el servidor mundial nos bloquea o se queda sin memoria, nos lo dirá aquí
+        if (data['remark'] != null) {
+          print("⚠️ Advertencia de Overpass (Radar Global): ${data['remark']}");
+        }
+
+        List<dynamic> elementos = data['elements'] ?? [];
+
+        return elementos.map((nodo) {
+          double latitud = nodo['lat'] ?? nodo['center']['lat'];
+          double longitud = nodo['lon'] ?? nodo['center']['lon'];
+
+          return {
+            'idPoi': nodo['id'],
+            'nombre': nodo['tags'] != null && nodo['tags']['name'] != null
+                ? nodo['tags']['name']
+                : '$categoria (Radar Global)',
+            'idTipo': _traducirCategoriaAId(categoria),
+            'latitud': latitud,
+            'longitud': longitud,
+            'esGlobal': true
+          };
+        }).toList();
+      } else {
+        print("El radar global falló con código HTTP: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Error en Radar Global Overpass: $e");
+    }
+    return [];
+  }
+
+  // Traductor inverso para mantener la compatibilidad con tus diccionarios de diseño
+  int _traducirCategoriaAId(String categoria) {
+    switch (categoria) {
+      case "Gasolineras": return 1;
+      case "Restaurantes": return 2;
+      case "Miradores": return 3;
+      case "Talleres": return 4;
+      default: return 0;
+    }
+  }
 }

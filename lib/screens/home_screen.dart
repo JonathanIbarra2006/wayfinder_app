@@ -563,39 +563,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Función para descargar y dibujar los Puntos de Interés de una ruta específica
   Future<void> _cargarPoisDeRuta(int idRuta) async {
-    List<dynamic> datos = await _mapService.obtenerPoisDeRuta(idRuta);
+    try {
+      List<dynamic> puntos = await _mapService.obtenerPoisDeRuta(idRuta);
 
-    if (datos.isNotEmpty) {
-      List<Marker> nuevosPois = datos.map((poi) {
-        IconData iconoPoi = Icons.place;
-        Color colorPoi = Colors.purple;
-
-        if (poi['idTipo'] == 1) { iconoPoi = Icons.local_gas_station; colorPoi = Colors.teal; }
-        else if (poi['idTipo'] == 2) { iconoPoi = Icons.restaurant; colorPoi = Colors.brown; }
-        else if (poi['idTipo'] == 3) { iconoPoi = Icons.camera_alt; colorPoi = Colors.green.shade700; }
-        else if (poi['idTipo'] == 4) { iconoPoi = Icons.build; colorPoi = Colors.blueGrey; }
+      List<Marker> nuevosPines = puntos.map((poi) {
+        int tipo = poi['idTipo']; // Leemos qué tipo de negocio es
 
         return Marker(
           point: LatLng(poi['latitud'], poi['longitud']),
-          width: 35,
-          height: 35,
-          child: GestureDetector(
-            onTap: () => _mostrarDetallePin(poi['nombre'] ?? 'Punto de Interés', 'Instalación en ruta.', iconoPoi, colorPoi),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white, shape: BoxShape.circle,
-                border: Border.all(color: colorPoi, width: 2),
-                boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black26)],
-              ),
-              child: Icon(iconoPoi, color: colorPoi, size: 20),
+          width: 45,
+          height: 45,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))
+              ],
+            ),
+            child: Icon(
+              _obtenerIconoPoi(tipo), // Invoca el ícono exacto de tu diccionario
+              color: _obtenerColorPoi(tipo), // Invoca el color exacto de tu diccionario
+              size: 24,
             ),
           ),
         );
       }).toList();
 
-      if (mounted) {
-        setState(() { _marcadoresPoi = nuevosPois; });
-      }
+      setState(() {
+        // Asignamos los pines estilizados al mapa
+        _marcadoresPoi = nuevosPines;
+      });
+    } catch (e) {
+      debugPrint("Error cargando POIs de la ruta: $e");
     }
   }
   // Función para escuchar el GPS continuamente en segundo plano
@@ -1434,6 +1434,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       onPressed: () => _aplicarFiltroPoi(titulo),
     );
   }
+  // 🎨 DISEÑO: Asigna un ícono específico según el ID de la base de datos
+  IconData _obtenerIconoPoi(int idTipo) {
+    switch (idTipo) {
+      case 1: return Icons.local_gas_station; // Gasolineras
+      case 2: return Icons.restaurant;        // Restaurantes
+      case 3: return Icons.landscape;         // Miradores
+      case 4: return Icons.build;             // Talleres
+      default: return Icons.location_on;
+    }
+  }
+
+  // 🎨 DISEÑO: Asigna un color corporativo a cada categoría
+  Color _obtenerColorPoi(int idTipo) {
+    switch (idTipo) {
+      case 1: return Colors.orange.shade700;
+      case 2: return Colors.red.shade600;
+      case 3: return Colors.green.shade600;
+      case 4: return Colors.blueGrey.shade700;
+      default: return Colors.redAccent;
+    }
+  }
   // ⚙️ LÓGICA: Traer POIs del backend y dibujarlos
   Future<void> _aplicarFiltroPoi(String categoria) async {
     // Si el usuario vuelve a tocar el mismo botón, lo apagamos y limpiamos el mapa
@@ -1456,12 +1477,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       List<dynamic> puntos = await _mapService.obtenerPoisPorCategoria(categoria);
 
       // Convertimos los datos JSON en Pines reales para el mapa
+      // Convertimos los datos JSON en Pines premium para el mapa
       List<Marker> nuevosPines = puntos.map((poi) {
+        int tipo = poi['idTipo']; // Leemos qué tipo de negocio es
+
         return Marker(
-          point: LatLng(poi['latitud'], poi['longitud']), // Aseguraremos estos nombres con el backend luego
-          width: 40,
-          height: 40,
-          child: Icon(Icons.location_on, color: Colors.redAccent, size: 40),
+          point: LatLng(poi['latitud'], poi['longitud']),
+          width: 45,
+          height: 45,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))
+              ],
+            ),
+            child: Icon(
+              _obtenerIconoPoi(tipo),
+              color: _obtenerColorPoi(tipo),
+              size: 24,
+            ),
+          ),
         );
       }).toList();
 

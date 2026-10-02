@@ -50,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _distanciaRestanteKm = 0.0; // NUEVO: Kilómetros hasta el destino
   final MapController _mapController = MapController();
   bool _cargando = false;
+  List<dynamic> _listaRutasNube = []; // NUEVO: Rutas reales de Supabase
   // NUEVO: Autonomía del vehículo principal del usuario
 // Gestión del vehículo seleccionado
 // Gestión del vehículo seleccionado
@@ -152,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // 3. MOTOR DE TRAZADO: Dibuja la ruta elegida y sus pines
 // 3. MOTOR DE TRAZADO: Dibuja la ruta elegida y anima la cámara
+// 3. MOTOR DE TRAZADO: Dibuja la ruta elegida y anima la cámara
   void _trazarRutaEnMapa(Map<String, dynamic> ruta) async {
     setState(() { _cargando = true; });
 
@@ -171,12 +173,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _puntosDeRuta = rutaPorCarretera;
         _marcadores = [];
         _cargando = false;
-        _modoNavegacion = true; // NUEVO: Encendemos el tablero
-        _destinoActual = rutaPorCarretera.last;
+        _modoNavegacion = true;
+        _destinoActual = rutaPorCarretera.isNotEmpty ? rutaPorCarretera.last : null;
+
+        // 👇 NUEVO: Cálculo matemático inmediato sin esperar al acelerómetro del GPS
+        if (_miUbicacion != null && _destinoActual != null) {
+          const distanciaMatematica = Distance();
+          _distanciaRestanteKm = distanciaMatematica.as(LengthUnit.Meter, _miUbicacion!, _destinoActual!) / 1000.0;
+        } else {
+          // Si el GPS falla temporalmente, usamos la distancia teórica de la base de datos
+          _distanciaRestanteKm = double.parse(ruta['distanciaKm'].toString());
+        }
       });
 
       if (rutaPorCarretera.isNotEmpty) {
-        // En lugar del CameraFit directo, pasamos por el escudo
         _enfocarRutaSegura(rutaPorCarretera);
       }
     } catch (e) {
@@ -762,14 +772,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.dispose();
   }
   // 5. Hacemos que esto se ejecute automáticamente al abrir esta pantalla
+// ☁️ NUEVA FUNCIÓN: Trae las rutas de Spring Boot sin bloquear la pantalla
+  Future<void> _cargarRutasNube() async {
+    List<dynamic> rutas = await _mapService.obtenerRutas();
+    if (mounted) {
+      setState(() {
+        _listaRutasNube = rutas;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _prepararMemoriaOffline(); // 💾 NUEVO: Arranca el motor de caché
+    _prepararMemoriaOffline();
     _obtenerUbicacionActual();
     _iniciarRastreoGps();
     _cargarReportes();
     _cargarVehiculoPrincipal();
+    _cargarRutasNube(); // 👈 NUEVA LÍNEA: Descarga las rutas al abrir el mapa
   }
 
   // 💾 NUEVA FUNCIÓN: Crea una carpeta secreta en el teléfono para guardar el mapa
@@ -1206,7 +1227,64 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
+// 📱 PANEL INFERIOR DESLIZANTE (Explorar)
+          if (!_modoNavegacion && !_modoPrevisualizacion)
+            DraggableScrollableSheet(
+              initialChildSize: 0.08,
+              minChildSize: 0.08,
+              maxChildSize: 0.5,
+              builder: (BuildContext context, ScrollController scrollController) {
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, -2))],
+                  ),
+                  child: ListView(
+                    controller: scrollController,
+                    physics: const ClampingScrollPhysics(),
+                    children: [
+                      Center(
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 12, bottom: 20),
+                          width: 40, height: 5,
+                          decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Text("Explorar", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                      ),
+                      const SizedBox(height: 15),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            _crearFiltroPoi("Gasolineras", Icons.local_gas_station, Colors.orange),
+                            const SizedBox(width: 10),
+                            _crearFiltroPoi("Restaurantes", Icons.restaurant, Colors.red),
+                            const SizedBox(width: 10),
+                            _crearFiltroPoi("Talleres", Icons.build, Colors.blueGrey),
+                            const SizedBox(width: 10),
+                            _crearFiltroPoi("Miradores", Icons.camera_alt, Colors.green),
+                          ],
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text("Rutas Recomendadas", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      ),
 
+                      // 👇 NUEVO BLOQUE: Dibuja dinámicamente o muestra cargando
+                      if (_listaRutasNube.isEmpty)
+                        const Center(child: CircularProgressIndicator()),
+                      ..._listaRutasNube.map((ruta) => _tarjetaRuta(ruta)),
+                    ],
+                  ),
+                );
+              },
+            ),
         ], // <--- ESTE ES EL CORCHETE QUE CIERRA LOS CHILDREN DEL STACK
       ),
 // Reemplaza desde "floatingActionButton:" hasta el final del Scaffold por esto:
@@ -1227,27 +1305,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       )
           : null) // Si ya está centrado, no mostramos ningún botón
       // 2. MODO EXPLORACIÓN: Mostramos tus botones clásicos
-          : Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton(
-            heroTag: "btnGPS",
-            onPressed: _obtenerUbicacionActual,
-            backgroundColor: Colors.white,
-            child: const Icon(Icons.my_location, color: Colors.blueAccent),
-          ),
-          const SizedBox(height: 16),
-          FloatingActionButton.extended(
-            heroTag: "btnRutas",
-            onPressed: _cargando ? null : _mostrarMenuRutas,
-            backgroundColor: Colors.blueAccent,
-            icon: _cargando
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Icon(Icons.format_list_bulleted, color: Colors.white),
-            label: const Text("Ver Rutas", style: TextStyle(color: Colors.white)),
-          ),
-        ],
+// 2. MODO EXPLORACIÓN: Mostramos el botón de GPS
+          : FloatingActionButton(
+        heroTag: "btnGPS",
+        onPressed: _obtenerUbicacionActual,
+        backgroundColor: Colors.white,
+        child: const Icon(Icons.my_location, color: Colors.blueAccent),
       ),
     ); // <-- Fin del Scaffold
   }
@@ -1328,6 +1391,79 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             )
           ],
         )
+    );
+  }
+
+  // 🎨 WIDGET: Botón de filtro para Puntos de Interés
+  Widget _crearFiltroPoi(String titulo, IconData icono, Color colorPrimario) {
+    return ActionChip(
+      elevation: 2,
+      pressElevation: 4,
+      shadowColor: Colors.black12,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.grey.shade200)
+      ),
+      avatar: Icon(icono, size: 18, color: colorPrimario),
+      label: Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
+      onPressed: () {
+        print("Filtrando: $titulo");
+      },
+    );
+  }
+
+  // 🎨 WIDGET: Tarjeta premium para cada ruta
+// 🎨 WIDGET: Tarjeta premium conectada a la base de datos
+  Widget _tarjetaRuta(Map<String, dynamic> ruta) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15, left: 20, right: 20),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))]
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), shape: BoxShape.circle),
+          child: const Icon(Icons.motorcycle, color: Colors.blue),
+        ),
+        title: Text(ruta['nombre'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Row(
+            children: [
+              Icon(Icons.terrain, size: 16, color: Colors.orange.shade700),
+              const SizedBox(width: 4),
+              Text(ruta['dificultad'], style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w500)),
+              const SizedBox(width: 15),
+              const Icon(Icons.straighten, size: 16, color: Colors.teal),
+              const SizedBox(width: 4),
+              Text('${ruta['distanciaKm']} km', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+        onTap: () async {
+          // Cierra el panel deslizante (si estás usando un Draggable no es necesario el pop, pero lo mantenemos por si acaso)
+          double distanciaRuta = double.parse(ruta['distanciaKm'].toString());
+
+          if (_autonomiaMiVehiculo > 0 && distanciaRuta > _autonomiaMiVehiculo) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('⚠️ PRECAUCIÓN: Tu vehículo (${_autonomiaMiVehiculo}km) no tiene autonomía suficiente.'), backgroundColor: Colors.red.shade800),
+            );
+          }
+
+          String? token = await _authService.obtenerToken();
+          if (token != null) {
+            _trazarRutaEnMapa(ruta);
+            _cargarPoisDeRuta(ruta['idRuta']);
+          }
+        },
+      ),
     );
   }
 }

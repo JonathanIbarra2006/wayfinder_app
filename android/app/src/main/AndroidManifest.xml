@@ -11,6 +11,13 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- 🛡️ NUEVO (FASE 7): Permisos para mantener viva la app con pantalla apagada -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- 🔔 NUEVO: Permiso obligatorio en Android 13+ para mostrar la tarjeta de notificación -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
             android:label="wayfinder_app"
             android:name="${applicationName}"

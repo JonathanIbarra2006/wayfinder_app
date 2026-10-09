@@ -17,6 +17,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio_cache_interceptor_hive_store/dio_cache_interceptor_hive_store.dart';
 import 'package:flutter_map_cache/flutter_map_cache.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -372,29 +373,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Función para interactuar con el hardware del GPS
 // Función para interactuar con el hardware del GPS (Mejorada con UX)
+// Función para interactuar con el hardware del GPS (Mejorada con UX y Permisos Android 13+)
   Future<void> _obtenerUbicacionActual() async {
+    // 🛡️ NUEVO: Pedimos explícitamente el permiso de notificaciones primero (Vital para Android 13+)
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+
     LocationPermission permiso;
     bool servicioHabilitado;
 
-    // 1. PRIMERO validamos y pedimos permisos (lanza el pop-up nativo)
+    // 1. Validamos y pedimos permisos de GPS
     permiso = await Geolocator.checkPermission();
     if (permiso == LocationPermission.denied) {
       permiso = await Geolocator.requestPermission();
       if (permiso == LocationPermission.denied) {
-        debugPrint('Permisos denegados por el usuario.');
+        debugPrint('Permisos de GPS denegados por el usuario.');
         return;
       }
     }
 
     if (permiso == LocationPermission.deniedForever) {
-      debugPrint('Permisos bloqueados permanentemente.');
+      debugPrint('Permisos de GPS bloqueados permanentemente.');
       return;
     }
 
-    // 2. LUEGO verificamos si la antena física del celular está encendida
+    // 2. Verificamos si la antena física del celular está encendida
     servicioHabilitado = await Geolocator.isLocationServiceEnabled();
     if (!servicioHabilitado) {
-      // Como no podemos encenderlo a la fuerza, guiamos al usuario:
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -404,10 +410,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             action: SnackBarAction(
               label: 'AJUSTES',
               textColor: Colors.white,
-              onPressed: () {
-                // Esto abre directamente el menú de GPS del celular
-                Geolocator.openLocationSettings();
-              },
+              onPressed: () => Geolocator.openLocationSettings(),
             ),
           ),
         );
@@ -415,17 +418,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
 
-// 3. Si tiene permisos y el GPS está encendido, trazamos el punto azul
+    // 3. Trazamos el punto azul
     Position posicion = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high
     );
 
     setState(() {
       _miUbicacion = LatLng(posicion.latitude, posicion.longitude);
-
-      // Efecto de vuelo hacia la ubicación
       _animarCamara(_miUbicacion!, 16.0);
     });
+
+    // 🛡️ ✅ NUEVO: Iniciamos el rastreo en segundo plano SOLO CUANDO YA TENEMOS PERMISO
+    _iniciarRastreoGps();
   }
 
   // Función para mostrar las opciones de reporte
@@ -788,7 +792,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _prepararMemoriaOffline();
     _obtenerUbicacionActual();
-    _iniciarRastreoGps();
     _cargarReportes();
     _cargarVehiculoPrincipal();
     _cargarRutasNube(); // 👈 NUEVA LÍNEA: Descarga las rutas al abrir el mapa

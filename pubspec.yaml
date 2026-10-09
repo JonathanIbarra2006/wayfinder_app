@@ -44,6 +44,8 @@ dependencies:
   flutter_map_cache: ^1.5.2
   dio_cache_interceptor_hive_store: ^4.0.0
   path_provider: ^2.1.6
+  # Cambia la versión a esta exactamente:
+  permission_handler: 11.3.1
 
 dev_dependencies:
   flutter_test:

@@ -82,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _tiempoEstimadoMin = 0;
 // 🎨 NUEVA VARIABLE: Interruptor de diseño
   bool _temaOscuro = false;
+  // 🛡️ ESCUDO 1: Seguro de inicialización
+  bool _mapaListo = false;
 
 // 🗺️ Llave maestra obtenida desde la bóveda segura (.env)
   final String _mapboxToken = dotenv.env['MAPBOX_TOKEN'] ?? '';
@@ -272,30 +274,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // 🛡️ ESCUDO PROTECTOR CONTRA PANTALLAS ROJAS (NaN)
+// 🛡️ ESCUDO PROTECTOR CONTRA PANTALLAS ROJAS (NaN) - BLINDAJE TOTAL
+// 🛡️ ESCUDO PROTECTOR (Blindaje Definitivo contra NaN)
   void _enfocarRutaSegura(List<LatLng> puntosRuta) {
-    if (puntosRuta.isEmpty) return;
+    if (puntosRuta.isEmpty || !_mapaListo) return; // Abortar si el mapa no existe
 
     try {
       final limitesRuta = LatLngBounds.fromPoints(puntosRuta);
 
-      // Si origen y destino son idénticos (División por cero inminente)
       if (limitesRuta.southWest == limitesRuta.northEast) {
-        _animarCamara(puntosRuta.first, 16.0); // Zoom manual seguro
+        _animarCamara(puntosRuta.first, 16.0);
         return;
       }
 
-      final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(50.0));
+      // Reducimos el padding a 20 para evitar cálculos negativos en pantallas pequeñas
+      final ajuste = CameraFit.bounds(bounds: limitesRuta, padding: const EdgeInsets.all(20.0));
       final camaraDestino = ajuste.fit(_mapController.camera);
 
-      // Blindaje final por si la librería colapsa internamente
-      if (camaraDestino.center.latitude.isNaN || camaraDestino.center.longitude.isNaN) {
+      // Si la librería intentó generar un NaN, abortamos el vuelo y hacemos un aterrizaje de emergencia
+      if (!camaraDestino.center.latitude.isFinite ||
+          !camaraDestino.center.longitude.isFinite ||
+          !camaraDestino.zoom.isFinite) {
         _animarCamara(puntosRuta.first, 15.0);
       } else {
         _animarCamara(camaraDestino.center, camaraDestino.zoom);
       }
     } catch (e) {
-      debugPrint("Escudo salvó la app de un crash: $e");
-      _animarCamara(puntosRuta.first, 15.0); // Aterrizaje de emergencia
+      debugPrint("Escudo salvó la app: $e");
+      _animarCamara(puntosRuta.first, 15.0);
     }
   }
   // 🗣️ TRADUCTOR DE NAVEGACIÓN (De máquina a Español)
@@ -328,25 +334,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // Función para animar el vuelo de la cámara (Estilo Google Maps - Blindaje Total)
 // Función para animar el vuelo de la cámara (Blindaje Extremo Anti-Gestos)
 // Función para animar el vuelo de la cámara (Blindaje Anti-Choques de Gestos)
+// Función para animar el vuelo de la cámara (Blindaje Absoluto Anti-Gestos y Texturas Incompletas)
+// 🚁 VUELO DE CÁMARA (Bloqueo absoluto de coordenadas corruptas)
   void _animarCamara(LatLng destino, double zoomDestino) {
+    if (!_mapaListo) return; // Regla de Oro: Nunca animar si el mapa no ha cargado
+
     if (!destino.latitude.isFinite || !destino.longitude.isFinite) return;
 
-    double zoomSeguro = 15.0;
-    if (zoomDestino.isFinite) zoomSeguro = zoomDestino.clamp(3.0, 18.0);
+    double zoomSeguro = zoomDestino.isFinite ? zoomDestino.clamp(3.0, 18.0) : 15.0;
 
-    final latInicio = _mapController.camera.center.latitude;
-    final lngInicio = _mapController.camera.center.longitude;
-    final zoomInicio = _mapController.camera.zoom;
+    double latInicio;
+    double lngInicio;
+    double zoomInicio;
 
+    try {
+      latInicio = _mapController.camera.center.latitude;
+      lngInicio = _mapController.camera.center.longitude;
+      zoomInicio = _mapController.camera.zoom;
+    } catch (e) {
+      return; // El motor de la cámara aún no está listo
+    }
+
+    // El filtro maestro: Si el mapa se corrompió por un gesto, NO iniciamos la animación
     if (!latInicio.isFinite || !lngInicio.isFinite || !zoomInicio.isFinite) {
+      // Forzamos un teletransporte directo sin animar para resetear la cámara
       _mapController.move(destino, zoomSeguro);
       return;
     }
 
-    // 🛑 DESTRUYE CUALQUIER ANIMACIÓN PREVIA PARA QUE NO PELEEN ENTRE SÍ
     _controladorCamara?.dispose();
-
-    // CREAMOS EL NUEVO VUELO Y LO GUARDAMOS EN LA VARIABLE GLOBAL
     _controladorCamara = AnimationController(duration: const Duration(milliseconds: 800), vsync: this);
     final animation = CurvedAnimation(parent: _controladorCamara!, curve: Curves.easeInOut);
 
@@ -360,11 +376,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final lng = lngTween.evaluate(animation);
         final z = zoomTween.evaluate(animation);
 
+        // Si la matemática de la animación se corrompe a la mitad, descartamos el frame
         if (lat.isFinite && lng.isFinite && z.isFinite) {
           _mapController.move(LatLng(lat, lng), z);
         }
       } catch (e) {
-        debugPrint("Frame ignorado");
+        debugPrint("Frame descartado por seguridad");
       }
     });
 
@@ -934,14 +951,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               minZoom: 5.0,
               maxZoom: 18.49,
 
-              // 🎥 NUEVO: Detectamos si el usuario movió el mapa con el dedo
-              // 🎥 NUEVO: Detectamos si el usuario movió el mapa con el dedo
+              // 🛡️ ESCUDO 2: Restricción física. Impide que un gesto rápido genere coordenadas infinitas
+              cameraConstraint: CameraConstraint.contain(
+                bounds: LatLngBounds(const LatLng(-90, -180), const LatLng(90, 180)),
+              ),
+
+              // Enciende el mapa SOLO cuando las texturas y el tamaño de pantalla son reales
+              onMapReady: () {
+                setState(() => _mapaListo = true);
+                if (_miUbicacion != null) {
+                  _animarCamara(_miUbicacion!, 16.0);
+                }
+              },
+
               onPositionChanged: (posicion, tieneGesto) {
                 if (tieneGesto) {
-                  // 🛑 SI EL USUARIO TOCA EL MAPA, APAGAMOS EL PILOTO AUTOMÁTICO INMEDIATAMENTE
                   _controladorCamara?.stop();
-
-                  // Si estamos navegando, desactivamos el seguimiento
                   if (_modoNavegacion && _seguirUsuario) {
                     setState(() => _seguirUsuario = false);
                   }
